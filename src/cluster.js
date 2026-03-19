@@ -52,6 +52,16 @@ export function clusterRows(rows) {
             const timingDelta = minTimingDelta(ts1, ts2);
             const exposureDiff = Math.abs(u1.user_market_exposure - u2.user_market_exposure);
 
+            // Check if these two users directly traded against each other
+            const u1Counterparties = String(u1.counterparty_user_ids || '').split(',').map(s => s.trim()).filter(Boolean);
+            const u2Counterparties = String(u2.counterparty_user_ids || '').split(',').map(s => s.trim()).filter(Boolean);
+            const isDirectCounterparty = u1Counterparties.includes(u2.user_id) || u2Counterparties.includes(u1.user_id);
+
+            // Check counterparty types — filter to only "User" type (not EMM/IMM_LMSR market makers)
+            const u1Types = String(u1.counterparty_types || '').split(',').map(s => s.trim());
+            const u2Types = String(u2.counterparty_types || '').split(',').map(s => s.trim());
+            const hasUserCounterparty = u1Types.includes('User') || u2Types.includes('User');
+
             pairs.push({
               user_a: {
                 user_id: u1.user_id,
@@ -62,7 +72,8 @@ export function clusterRows(rows) {
                 num_trades: u1.num_trades,
                 timestamps: String(u1.placed_at_list || ''),
                 outcome: u1.outcome_statuses,
-                pnl: u1.total_pnl
+                pnl: u1.total_pnl,
+                is_direct_counterparty_in_sheet: u1.is_direct_counterparty_in_sheet
               },
               user_b: {
                 user_id: u2.user_id,
@@ -73,7 +84,8 @@ export function clusterRows(rows) {
                 num_trades: u2.num_trades,
                 timestamps: String(u2.placed_at_list || ''),
                 outcome: u2.outcome_statuses,
-                pnl: u2.total_pnl
+                pnl: u2.total_pnl,
+                is_direct_counterparty_in_sheet: u2.is_direct_counterparty_in_sheet
               },
               signals: {
                 timing_delta_seconds: timingDelta !== null ? Math.round(timingDelta) : null,
@@ -86,7 +98,10 @@ export function clusterRows(rows) {
                 exposure_in_promo_max_range: u1.user_market_exposure >= 45 && u1.user_market_exposure <= 60 && u2.user_market_exposure >= 45 && u2.user_market_exposure <= 60,
                 both_balance_under_1: u1.balance < 1 && u2.balance < 1,
                 both_single_trade: u1.num_trades === 1 && u2.num_trades === 1,
-                users_in_market: u1.users_in_market
+                users_in_market: u1.users_in_market,
+                direct_counterparty: isDirectCounterparty,
+                has_user_counterparty: hasUserCounterparty,
+                either_flagged_in_sheet: u1.is_direct_counterparty_in_sheet || u2.is_direct_counterparty_in_sheet
               }
             });
           }
@@ -97,15 +112,22 @@ export function clusterRows(rows) {
     if (pairs.length === 0) continue;
 
     // Only include pairs with strong signal combinations
-    // Must have: same_promo AND at least 2 of: tight timing, balance drained, exposure match, single trade
+    // Path 1: direct_counterparty + same_promo + 1 confirming signal (strongest path)
+    // Path 2: same_promo + at least 2 confirming signals (no counterparty data)
     const strongPairs = pairs.filter(p => {
       const s = p.signals;
       if (!s.same_promo) return false;
+
       const confirmingCount = (s.timing_under_60s ? 1 : 0)
         + (s.both_balance_under_1 ? 1 : 0)
         + (s.exposure_within_5 || s.exposure_in_promo_max_range ? 1 : 0)
         + (s.both_single_trade ? 1 : 0)
         + (s.timing_under_10s ? 1 : 0);
+
+      // Direct counterparty = they literally traded against each other (5x signal)
+      if (s.direct_counterparty) return confirmingCount >= 1;
+
+      // No direct counterparty data — need stronger circumstantial evidence
       return confirmingCount >= 2;
     });
 
@@ -156,6 +178,9 @@ export function parseRow(r) {
     total_pnl: parseFloat(r.total_pnl) || 0,
     any_settled: r.any_settled,
     users_in_market: parseInt(r.users_in_market) || 0,
-    balance: parseFloat(r.balance) || 0
+    balance: parseFloat(r.balance) || 0,
+    counterparty_user_ids: r.counterparty_user_ids || '',
+    counterparty_types: r.counterparty_types || '',
+    is_direct_counterparty_in_sheet: String(r.is_direct_counterparty_in_sheet || '').toLowerCase() === 'true'
   };
 }
