@@ -1,0 +1,17 @@
+services:
+  - type: worker
+    name: fraud-detector
+    runtime: node
+    buildCommand: npm install
+    startCommand: node src/index.js
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: FRAUD_SHEET_ID
+        sync: false
+      - key: ANALYZED_SHEET_ID
+        sync: false
+      - key: N8N_WEBHOOK_URL
+        sync: false
