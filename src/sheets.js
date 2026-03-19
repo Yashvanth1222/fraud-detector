@@ -3,7 +3,9 @@ import { google } from 'googleapis';
 let sheetsClient = null;
 
 function getAuth() {
-  const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const fixed = raw.replace(/\n/g, '\\n');
+  const creds = JSON.parse(fixed);
   return new google.auth.GoogleAuth({
     credentials: creds,
     scopes: ['https://www.googleapis.com/auth/spreadsheets']
