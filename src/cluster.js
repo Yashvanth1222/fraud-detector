@@ -96,17 +96,27 @@ export function clusterRows(rows) {
 
     if (pairs.length === 0) continue;
 
-    const hasSuspiciousPair = pairs.some(p =>
-      p.signals.timing_under_5min || p.signals.same_promo
-    );
-    if (!hasSuspiciousPair) continue;
+    // Only include pairs with strong signal combinations
+    // Must have: same_promo AND at least 2 of: tight timing, balance drained, exposure match, single trade
+    const strongPairs = pairs.filter(p => {
+      const s = p.signals;
+      if (!s.same_promo) return false;
+      const confirmingCount = (s.timing_under_60s ? 1 : 0)
+        + (s.both_balance_under_1 ? 1 : 0)
+        + (s.exposure_within_5 || s.exposure_in_promo_max_range ? 1 : 0)
+        + (s.both_single_trade ? 1 : 0)
+        + (s.timing_under_10s ? 1 : 0);
+      return confirmingCount >= 2;
+    });
+
+    if (strongPairs.length === 0) continue;
 
     markets.push({
       market_id: marketId,
       market_description: marketRows[0].market_description,
       total_users_in_data: marketRows.length,
       users_in_market: marketRows[0].users_in_market,
-      pairs
+      pairs: strongPairs
     });
   }
 
