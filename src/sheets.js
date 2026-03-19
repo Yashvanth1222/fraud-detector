@@ -4,8 +4,11 @@ let sheetsClient = null;
 
 function getAuth() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  const fixed = raw.replace(/\n/g, '\\n');
-  const creds = JSON.parse(fixed);
+  const creds = JSON.parse(raw);
+  // Render may mangle the private key newlines — ensure they're actual \n
+  if (creds.private_key) {
+    creds.private_key = creds.private_key.replace(/\\n/g, '\n');
+  }
   return new google.auth.GoogleAuth({
     credentials: creds,
     scopes: ['https://www.googleapis.com/auth/spreadsheets']
